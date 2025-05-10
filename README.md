@@ -14,7 +14,12 @@ workflow_templates/            # Root directory
 ├── docs/                      # Documentation directory
 │   ├── How to Use Your Mcp Assistant and Workflow Templates.md
 │   ├── Workflow and Assistant Template Mapping.md
-│   └── Master Template Structures for Mcp Assistants and Workflows.md
+│   ├── Master Template Structures for Mcp Assistants and Workflows.md
+│   ├── Implementation_Checklist.md    # NEW: Step-by-step implementation guide
+│   ├── Troubleshooting_Guide.md       # NEW: Common issues and solutions
+│   └── Mermaid_Flowchart_Guide.md     # NEW: Guide for working with flowcharts
+├── scripts/                   # NEW: Utility scripts
+│   └── validate_configs.ps1   # PowerShell script to validate configuration files
 └── workflow_templates/        # Templates directory
     ├── main_assistant/        # Central orchestrator
     ├── mcp_thinking_agent/    # Decision-making agent
@@ -89,7 +94,11 @@ Each assistant/workflow folder contains four template types:
    - `docs/Workflow and Assistant Template Mapping.md`
    - `docs/Master Template Structures for Mcp Assistants and Workflows.md`
 
-2. **Start with one workflow or assistant:**
+2. **Use the implementation checklist:**
+   - Follow the step-by-step guide in `docs/Implementation_Checklist.md`
+   - Use it to track your progress for each template implementation
+
+3. **Start with one workflow or assistant:**
    - Choose the one most relevant to your immediate needs
    - Review all four templates in that folder to understand the complete picture
 
@@ -100,6 +109,7 @@ Each assistant/workflow folder contains four template types:
    - Connect to your actual knowledge sources and databases
    - Set appropriate operational parameters for your environment
    - Define security settings and logging configurations
+   - **NEW:** Use `scripts/validate_configs.ps1` to check your configuration files
 
 2. **Adapt the Operational Guidelines:**
    - Refine the purpose and scope to match your business needs
@@ -116,6 +126,7 @@ Each assistant/workflow folder contains four template types:
    - Follow the logic flow for development
    - Ensure all decision points are implemented
    - Map error handling to actual processes
+   - **NEW:** See `docs/Mermaid_Flowchart_Guide.md` for help with viewing and editing flowcharts
 
 5. **Version control your customized templates:**
    - Track changes over time
@@ -128,12 +139,24 @@ Each assistant/workflow folder contains four template types:
 - **Customize thoughtfully:** Adapt to your needs while preserving the template structure
 - **Review regularly:** Update templates as your systems evolve
 - **Documentation is key:** Keep the operational guidelines current and comprehensive
+- **Validate your work:** Use the provided validation script to ensure correctness
+- **Platform compatibility:** Adapt paths and settings for your specific OS (Windows/Linux/Mac)
+
+## Troubleshooting
+
+If you encounter issues while implementing these templates:
+
+1. Check the `docs/Troubleshooting_Guide.md` for common issues and solutions
+2. Validate your configuration files using the `scripts/validate_configs.ps1` script
+3. For Mermaid flowchart issues, refer to `docs/Mermaid_Flowchart_Guide.md`
 
 ## Supporting Information
 
 For more detailed guidance, refer to:
 - `docs/How to Use Your Mcp Assistant and Workflow Templates.md` - Step-by-step implementation guide
 - `docs/Master Template Structures for Mcp Assistants and Workflows.md` - Detailed explanation of template structures
+- `docs/Implementation_Checklist.md` - Complete checklist for template implementation
+- `docs/Troubleshooting_Guide.md` - Solutions for common implementation issues
 
 ## Getting Help
 
