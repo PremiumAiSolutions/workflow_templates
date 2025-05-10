@@ -1,0 +1,127 @@
+# Configuration Template: Mcp Invoice
+
+# 1. General Settings
+assistant_workflow_name: "Mcp Invoice"
+version: "1.0.0"
+status: "Active"
+description: "Manages customer invoices, including creation, sending, status tracking, payment recording, and report generation."
+owner_team: "Finance Department / Billing Team"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "Accounting_Billing_System_API" # e.g., QuickBooks Online, Xero, Stripe Billing, Zoho Invoice
+    api_endpoint: "https://quickbooks.api.intuit.com/v3/company/{realmId}/invoice" # Example for QuickBooks
+    auth_type: "OAuth2.0"
+    credentials_env_var_group: "ACCOUNTING_SYSTEM_API_CREDS"
+    timeout_seconds: 20
+    retry_attempts: 3
+    description: "The primary system for managing invoice records, customer data, and financial transactions."
+  - service_name: "CRM_System_API" # For customer details and order information
+    api_endpoint: "http://crm-system/api/v1/customers"
+    api_key_env_var: "CRM_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "To fetch customer billing information, contact details, and related order data."
+  - service_name: "Order_Management_System_API" # For fetching line items from orders
+    api_endpoint: "http://oms-system/api/v1/orders"
+    api_key_env_var: "OMS_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "To retrieve details of orders to be invoiced."
+  - service_name: "Mcp_Email_Assistant_API" # For sending invoices to customers
+    api_endpoint: "http://mcp-email-service/api/v1/send_automated_email_task" # Assuming it uses the No Human in Loop version
+    api_key_env_var: "MCP_EMAIL_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "To send invoice PDFs and notifications to customers."
+  - service_name: "PDF_Generation_Service_API" # If not handled by Accounting System
+    api_endpoint: "http://pdf-gen-service/api/v1/generate_pdf_from_template"
+    api_key_env_var: "PDF_GEN_API_KEY"
+    timeout_seconds: 15
+    retry_attempts: 2
+    description: "Service to generate PDF versions of invoices from structured data."
+  - service_name: "File_Storage_Service_API" # For storing generated invoice PDFs or reports
+    api_endpoint: "http://file-storage-service/api/v1/upload_file"
+    timeout_seconds: 30
+    retry_attempts: 2
+    description: "Service to save generated invoice PDFs and reports."
+
+# 3. Knowledge Base & Data Source Links/Paths
+knowledge_sources:
+  - name: "Invoice_Templates_KB"
+    type: "Mcp_Knowledge_Base_Section_or_FileSystem"
+    path_or_endpoint: "/path/to/invoice_templates/" # Or PDF_Generation_Service_API template IDs
+    description: "Templates for generating invoice PDFs (layout, company logo, terms)."
+  - name: "Tax_Rates_DB_or_API"
+    type: "Database_or_External_API"
+    path_or_endpoint: "http://tax-service-api/v1/get_rate?zipcode={{zipcode}}"
+    description: "Source for current tax rates based on location or product/service type."
+  - name: "Product_Service_Catalog_KB"
+    type: "Mcp_Knowledge_Base_Query_or_OMS_API"
+    path_or_endpoint: "query: get_product_details_by_sku={{sku}}"
+    description: "Master list of products/services with descriptions and standard prices."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  default_due_date_days: 30 # Days from invoice date
+  invoice_number_prefix: "INV-"
+  invoice_number_sequence_start: 1001
+  currency_code: "USD"
+  currency_symbol: "$"
+  default_payment_terms: "Net 30 Days"
+  late_payment_reminder_days_before_due: [7, 3] # Send reminders 7 and 3 days before due
+  late_payment_reminder_days_after_due: [1, 7, 14] # Send reminders 1, 7, 14 days after due
+  default_report_output_format: "csv"
+  automated_invoice_sending_enabled: true
+
+# 5. Trigger Conditions
+trigger_conditions:
+  - event_source: "Main_Assistant_Delegation"
+    event_type: "manage_invoice_task"
+  - event_source: "Order_Management_System_Event"
+    event_type: "order_shipped_or_service_completed"
+  - event_source: "Scheduler_Service"
+    event_type: "monthly_recurring_invoice_generation_job"
+  - event_source: "User_Interface_Billing_App"
+    event_type: "user_initiates_invoice_action"
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/mcp_invoice.log"
+  log_fields_to_include: ["timestamp", "level", "invoice_id", "customer_id", "action", "amount", "status", "error_message"]
+monitoring:
+  metrics_endpoint: "http://localhost:9098/metrics"
+  alerting_rules:
+    - metric: "invoice_creation_failure_rate"
+      threshold: "2%"
+      notification_channel: "finance_team_alerts"
+    - metric: "payment_recording_error_rate"
+      threshold: "1%"
+      notification_channel: "finance_team_alerts_critical"
+    - metric: "avg_days_sales_outstanding_dso"
+      threshold: "45"
+      notification_channel: "finance_manager_reports"
+
+# 7. Security & Permissions
+security:
+  required_roles_for_managing_invoices:
+    - "BillingSpecialistRole"
+    - "AccountantRole"
+    - "FinanceManagerRole"
+    - "SystemAdminRole_For_Automated_Processes"
+  access_to_financial_data_policy_ref: "Company_Financial_Data_Access_Policy_v2.0.pdf"
+  data_encryption_at_rest: true # Handled by Accounting System and local log/report storage
+  data_encryption_in_transit: true # TLS for all API calls
+  pci_dss_compliance_if_handling_card_data_directly: false # Assume payments processed by compliant gateway via Accounting System
+
+# 8. Human-in-the-Loop (HITL) Configuration
+hitl_config:
+  enabled: true # For discrepancies, approval of large invoices, or payment disputes
+  trigger_on_invoice_amount_exceeds_threshold: 5000 # Amount in `currency_code`
+  trigger_on_payment_discrepancy_detected: true
+  trigger_on_failed_automated_invoice_generation_for_complex_order: true
+  escalation_queue: "Billing_Specialist_Review_Queue"
+  information_to_pass_to_human: ["invoice_id_or_draft_id", "customer_id", "order_ids_if_any", "issue_description", "relevant_financial_data"]
+  max_wait_time_for_human_approval_seconds: 86400 # 24 hours for invoice approval/review
+

@@ -1,0 +1,93 @@
+# Configuration Template: Main Assistant (Office Manager)
+
+# 1. General Settings
+assistant_workflow_name: "Main Assistant (Office Manager)"
+version: "1.0.0"
+status: "Active"
+description: "Central orchestrator for Mcp assistants and workflows. Manages task delegation, monitoring, and serves as a primary interface for office management tasks."
+owner_team: "Operations Team"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "Mcp_Thinking_Agent_API"
+    api_endpoint: "http://mcp-thinking-agent-service/api/v1/decide"
+    api_key_env_var: "MCP_THINKING_AGENT_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+  - service_name: "Mcp_Knowledge_Base_API"
+    api_endpoint: "http://mcp-kb-service/api/v1/query"
+    api_key_env_var: "MCP_KB_API_KEY"
+    timeout_seconds: 15
+    retry_attempts: 3
+  - service_name: "Notification_Service_API" # For sending alerts/updates
+    api_endpoint: "http://notification-service/api/v1/send"
+    api_key_env_var: "NOTIFICATION_SERVICE_API_KEY"
+    timeout_seconds: 5
+    retry_attempts: 3
+  # Add integrations for each Mcp Assistant it controls (e.g., McpEmail, McpCalendar, etc.)
+  # Example for McpCalendar:
+  - service_name: "Mcp_Calendar_API"
+    api_endpoint: "http://mcp-calendar-service/api/v1/schedule"
+    api_key_env_var: "MCP_CALENDAR_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 3
+
+# 3. Knowledge Base & Data Source Links/Paths
+knowledge_sources:
+  - name: "Main_Business_Master_Prompt"
+    type: "Document_Store"
+    path_or_endpoint: "/path/to/company_master_prompt.md"
+    access_credentials_env_var: "null" # Assuming local access or pre-configured
+  - name: "Mcp_Assistant_Registry"
+    type: "Database"
+    path_or_endpoint: "db_connection_string_for_assistant_registry"
+    access_credentials_env_var: "MCP_ASSISTANT_REGISTRY_DB_PASS"
+    description: "Database listing all Mcp assistants, their capabilities, and status."
+  - name: "Active_Task_Log_DB"
+    type: "Database"
+    path_or_endpoint: "db_connection_string_for_task_log"
+    access_credentials_env_var: "MCP_TASK_LOG_DB_PASS"
+    description: "Database for logging and tracking status of delegated tasks."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  default_task_priority: "Medium"
+  max_concurrent_delegations: 10
+  monitoring_interval_seconds: 60 # How often to check status of delegated tasks
+  escalation_threshold_hours: 2 # Escalate if task overdue by this many hours
+
+# 5. Trigger Conditions (Main Assistant is typically user-triggered or event-triggered from other systems)
+trigger_conditions:
+  - event_source: "User_Interface_API"
+    event_type: "new_task_request"
+  - event_source: "Workflow_Inbound_Trigger_System"
+    event_type: "system_generated_task"
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/mcp_main_assistant.log"
+monitoring:
+  metrics_endpoint: "http://localhost:9090/metrics" # Example Prometheus endpoint
+  alerting_rules:
+    - metric: "delegation_failure_rate"
+      threshold: "10%"
+      notification_channel: "ops_alerts_email_group"
+    - metric: "avg_task_pending_time_hours"
+      threshold: "4"
+      notification_channel: "ops_alerts_slack_channel"
+
+# 7. Security & Permissions
+security:
+  required_roles_for_execution:
+    - "OfficeManagerRole"
+    - "AdminRole"
+  data_encryption_at_rest: true
+  data_encryption_in_transit: true
+
+# 8. Human-in-the-Loop (HITL) Configuration
+hitl_config:
+  trigger_on_confidence_below: 0.6 # For Mcp Thinking Agent suggestions if confidence is low
+  escalation_queue: "Office_Manager_Review_Queue"
+  max_wait_time_for_human_seconds: 7200 # 2 hours for critical escalations
+

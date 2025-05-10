@@ -1,0 +1,92 @@
+# Configuration Template: Mcp Knowledge Base
+
+# 1. General Settings
+assistant_workflow_name: "Mcp Knowledge Base"
+version: "1.0.0"
+status: "Active"
+description: "Manages and provides access to the company-wide knowledge base. Supports querying, adding, and updating information."
+owner_team: "Information Management Team"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "Vector_Database_Service"
+    api_endpoint: "http://vector-db-service/api/v1/search"
+    # api_key_env_var: "VECTOR_DB_API_KEY" # Or other auth mechanism
+    connection_string_env_var: "VECTOR_DB_CONNECTION_STRING"
+    timeout_seconds: 20
+    retry_attempts: 3
+    description: "Primary storage and search interface for KB content."
+  - service_name: "Document_Parser_Service"
+    api_endpoint: "http://doc-parser-service/api/v1/parse"
+    # api_key_env_var: "DOC_PARSER_API_KEY"
+    timeout_seconds: 60 # Parsing can take time
+    retry_attempts: 2
+    description: "Service to extract text and metadata from uploaded documents."
+  - service_name: "NLP_Service_API" # For semantic search, summarization
+    api_endpoint: "http://nlp-service/api/v1/process"
+    api_key_env_var: "NLP_SERVICE_API_KEY"
+    timeout_seconds: 30
+    retry_attempts: 3
+
+# 3. Knowledge Base & Data Source Links/Paths (Actual KB storage config)
+knowledge_sources:
+  - name: "Primary_Vector_Store"
+    type: "VectorDatabase"
+    # Configuration details for the vector DB itself are part of its own service, 
+    # this Mcp KB assistant interacts with it via the API listed in integrations.
+    # May include schema names or collection names here if applicable.
+    default_collection_name: "company_kb_main"
+  - name: "Document_Staging_Area"
+    type: "FileSystem_or_CloudStorage"
+    path_or_endpoint: "/mnt/kb_staging_uploads/" # or s3://bucket-name/staging/
+    access_credentials_env_var: "STAGING_AREA_ACCESS_KEY"
+    description: "Temporary location for documents pending processing and ingestion."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  default_search_results_limit: 10
+  max_document_upload_size_mb: 50
+  supported_file_types_for_ingestion: ["pdf", "docx", "txt", "md", "html"]
+  re_indexing_schedule_cron: "0 2 * * *" # Daily at 2 AM
+  min_search_query_length: 3
+  semantic_search_threshold: 0.75 # Minimum similarity score for semantic search results
+
+# 5. Trigger Conditions (For "Add to Knowledge Base" workflow, managed by this Mcp)
+trigger_conditions:
+  - event_source: "Document_Upload_Endpoint_API"
+    event_type: "new_document_uploaded_to_staging"
+  - event_source: "Main_Assistant_Delegation"
+    event_type: "add_content_to_kb_task"
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/mcp_knowledge_base.log"
+monitoring:
+  metrics_endpoint: "http://localhost:9091/metrics"
+  alerting_rules:
+    - metric: "query_latency_p95_ms"
+      threshold: "2000"
+      notification_channel: "info_management_alerts_email"
+    - metric: "ingestion_failure_rate"
+      threshold: "5%"
+      notification_channel: "info_management_alerts_slack"
+
+# 7. Security & Permissions
+security:
+  required_roles_for_query:
+    - "EmployeeRole"
+    - "ReadOnlyUserRole"
+  required_roles_for_ingestion_management:
+    - "KnowledgeManagerRole"
+    - "AdminRole"
+  data_encryption_at_rest: true # Handled by underlying storage services
+  data_encryption_in_transit: true
+  access_control_granularity: "document_level" # Or collection_level, if supported
+
+# 8. Human-in-the-Loop (HITL) Configuration (Optional for KB, e.g., for ambiguous queries or content flagging)
+hitl_config:
+  trigger_on_low_search_relevance_score: 0.5 
+  escalation_queue: "Knowledge_Manager_Review_Queue"
+  max_wait_time_for_human_seconds: 86400 # 1 day for content review tasks
+

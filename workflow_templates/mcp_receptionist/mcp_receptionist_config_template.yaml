@@ -1,0 +1,122 @@
+# Configuration Template: Mcp Receptionist
+
+# 1. General Settings
+assistant_workflow_name: "Mcp Receptionist"
+version: "1.0.0"
+status: "Active"
+description: "Handles initial interactions from various channels (phone, chat, lobby), provides basic information, and routes inquiries to appropriate Mcp assistants or human queues."
+owner_team: "Front Office Support / Customer Experience Team"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "Telephony_System_API" # e.g., Twilio, Vonage, Asterisk
+    api_endpoint: "https://api.twilio.com/2010-04-01/Accounts/{ACCOUNT_SID}/Calls.json" # Example
+    api_key_env_var: "TWILIO_ACCOUNT_SID"
+    auth_token_env_var: "TWILIO_AUTH_TOKEN"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "For handling inbound/outbound phone calls, call transfers."
+  - service_name: "Chat_Platform_API" # e.g., Intercom, LiveChat, Custom WebSocket
+    api_endpoint: "https://api.intercom.io/conversations"
+    api_key_env_var: "INTERCOM_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "For handling website chat interactions."
+  - service_name: "Mcp_Knowledge_Base_API"
+    api_endpoint: "http://mcp-kb-service/api/v1/query"
+    api_key_env_var: "MCP_KB_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 3
+    description: "To answer FAQs and retrieve company information."
+  - service_name: "Mcp_Calendar_API"
+    api_endpoint: "http://mcp-calendar-service/api/v1/events"
+    api_key_env_var: "MCP_CALENDAR_API_KEY"
+    timeout_seconds: 15
+    retry_attempts: 2
+    description: "To check staff availability or schedule appointments."
+  - service_name: "User_Directory_Service_API"
+    api_endpoint: "http://user-directory-service/api/v1/users"
+    api_key_env_var: "USER_DIRECTORY_API_KEY"
+    timeout_seconds: 5
+    retry_attempts: 2
+    description: "To find staff contact details or department information."
+  - service_name: "Notification_Service_API" # For notifying staff of visitor arrival
+    api_endpoint: "http://notification-service/api/v1/send"
+    api_key_env_var: "NOTIFICATION_SERVICE_API_KEY"
+    timeout_seconds: 5
+    retry_attempts: 3
+
+# 3. Knowledge Base & Data Source Links/Paths
+knowledge_sources:
+  - name: "FAQ_KB_Section"
+    type: "Mcp_Knowledge_Base_Query"
+    path_or_endpoint: "query: get_faq_for_topic={{topic_name}}"
+    description: "Specific section in Mcp KB for frequently asked questions (business hours, location, etc.)."
+  - name: "Staff_Directory_KB_Section"
+    type: "Mcp_Knowledge_Base_Query_or_UserDirectoryAPI"
+    path_or_endpoint: "query: find_staff_member_by_name_or_department={{query}}"
+    description: "Information about staff members, departments, and their availability status (if available)."
+  - name: "Visitor_Log_DB"
+    type: "Database"
+    path_or_endpoint: "db_connection_string_for_visitor_log"
+    access_credentials_env_var: "VISITOR_LOG_DB_PASS"
+    description: "To log visitor check-ins/check-outs (for physical receptionist tasks)."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  default_greeting_phone: "Thank you for calling [CompanyName]. How can I help you?"
+  default_greeting_chat: "Welcome to [CompanyName]! How can I assist you today?"
+  default_language: "en-US"
+  max_clarification_attempts: 2 # Before escalating to human or offering general help
+  after_hours_handling: "play_message_provide_voicemail_option" # Options: "play_message_provide_voicemail_option", "route_to_oncall_mcp_dispatch", "provide_emergency_contact"
+  voicemail_box_number: "VM_BOX_GENERAL_INQUIRY"
+  sales_queue_phone_number_or_id: "SALES_QUEUE_EXTENSION_101"
+  support_queue_chat_id: "SUPPORT_CHAT_GROUP_ID"
+
+# 5. Trigger Conditions
+trigger_conditions:
+  - event_source: "Telephony_System_API"
+    event_type: "inbound_phone_call_received"
+  - event_source: "Chat_Platform_API"
+    event_type: "new_chat_session_started"
+  - event_source: "Virtual_Lobby_Kiosk_Interface"
+    event_type: "visitor_check_in_request"
+  - event_source: "Main_Assistant_Delegation"
+    event_type: "handle_reception_inquiry_task"
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/mcp_receptionist.log"
+  log_fields_to_include: ["timestamp", "level", "interaction_id", "channel", "caller_id", "intent", "action_taken", "duration_ms"]
+monitoring:
+  metrics_endpoint: "http://localhost:9095/metrics"
+  alerting_rules:
+    - metric: "call_abandonment_rate_receptionist_queue"
+      threshold: "10%"
+      notification_channel: "front_office_manager_alerts"
+    - metric: "avg_interaction_handle_time_seconds"
+      threshold: "180"
+      notification_channel: "front_office_manager_perf_alerts"
+    - metric: "intent_recognition_failure_rate"
+      threshold: "15%"
+      notification_channel: "ai_dev_team_receptionist_alerts"
+
+# 7. Security & Permissions
+security:
+  # Mcp Receptionist typically has broad but shallow access to information.
+  # Permissions are enforced by the services it calls (e.g., Mcp KB, Mcp Calendar).
+  data_encryption_at_rest: true # For logs, visitor DB
+  data_encryption_in_transit: true # TLS for all API calls
+  pii_handling_for_call_logs_chat_transcripts: "Anonymize_or_Secure_Access_Policy_Ref"
+
+# 8. Human-in-the-Loop (HITL) Configuration
+hitl_config:
+  enabled: true # For escalating complex queries or when AI cannot understand
+  trigger_on_low_intent_confidence_score: 0.6
+  trigger_after_max_clarification_attempts: true
+  escalation_queue_phone: "Human_Receptionist_Phone_Line_Ext_0"
+  escalation_queue_chat: "Human_Receptionist_Chat_Queue"
+  information_to_pass_to_human: ["interaction_id", "channel", "caller_id", "transcript_so_far", "ai_interpretation_attempt"]
+  max_wait_time_for_human_seconds: 120 # For live transfer attempts
+

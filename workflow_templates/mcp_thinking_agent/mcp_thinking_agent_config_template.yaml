@@ -1,0 +1,120 @@
+# Configuration Template: Mcp Thinking Agent
+
+# 1. General Settings
+assistant_workflow_name: "Mcp Thinking Agent"
+version: "1.1.0"
+status: "Active"
+description: "Central NLU and decision-making engine. Analyzes incoming requests, determines intent, extracts entities, and routes to the appropriate Mcp assistant, workflow, or human agent, or provides direct answers for simple queries."
+owner_team: "AI Core Team / Automation Platform Team"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "NLU_Service_Provider_API" # e.g., Rasa, Google Dialogflow, AWS Lex, Azure LUIS, or a custom in-house NLU engine (potentially on AirQ)
+    api_endpoint: "http://nlu-service-provider/api/v2/parse_intent_entities"
+    auth_type: "API_Key_Header"
+    credentials_env_var: "NLU_SERVICE_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "The core Natural Language Understanding service for intent recognition and entity extraction."
+  - service_name: "Mcp_Knowledge_Base_API" # For direct answers and fetching Mcp capabilities
+    api_endpoint: "http://mcp-kb-service/api/v1/query_direct_answer_or_mcp_manifest"
+    api_key_env_var: "MCP_KB_API_KEY"
+    timeout_seconds: 5
+    retry_attempts: 3
+    description: "To fetch direct answers for FAQs and to get a dynamic list of available Mcps and their capabilities."
+  - service_name: "User_Context_Service_API" # Optional, for fetching richer user context
+    api_endpoint: "http://user-context-service/api/v1/get_user_profile_and_history"
+    api_key_env_var: "USER_CONTEXT_API_KEY"
+    timeout_seconds: 3
+    retry_attempts: 2
+    description: "To retrieve detailed user profiles, interaction history, or session data."
+  # This agent doesn't directly call other Mcps for task execution, it *routes* to them.
+  # The calling system (e.g., Main Assistant) would then execute the routed call.
+
+# 3. Knowledge Base & Data Source Links/Paths
+knowledge_sources:
+  - name: "Mcp_And_Workflow_Manifest_KB"
+    type: "Mcp_Knowledge_Base_Section_or_Dynamic_API_Endpoint"
+    # path_or_endpoint: "mcp_kb_api:get_mcp_manifest" (Handled by Mcp_Knowledge_Base_API integration)
+    description: "A dynamic or static list of all available Mcp assistants and workflows, their capabilities, trigger phrases/intents, and required parameters. Used for routing decisions."
+  - name: "Intent_Routing_Rules_Engine_KB"
+    type: "Mcp_Knowledge_Base_Section_or_Internal_Logic"
+    path_or_endpoint: "/path/to/intent_routing_rules.yaml_or_internal_rules_engine_config"
+    description: "Configuration for complex routing logic, intent prioritization, disambiguation strategies, and escalation paths."
+  - name: "Direct_Answer_FAQ_KB_Subset"
+    type: "Mcp_Knowledge_Base_Section_Optimized_for_Thinking_Agent"
+    # path_or_endpoint: "mcp_kb_api:get_direct_answer_faq" (Handled by Mcp_Knowledge_Base_API integration)
+    description: "A subset of FAQs from the main Mcp Knowledge Base that the Thinking Agent is authorized and capable of answering directly."
+  - name: "NLU_Model_Configuration_Pointers"
+    type: "NLU_Service_Configuration"
+    path_or_endpoint: "NLU_Service_API:model_id={{language_code}}_general_purpose_v3.2"
+    description: "Pointers to the specific NLU models to be used for different languages or domains."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  default_language: "en-US"
+  min_intent_confidence_for_direct_mcp_routing: 0.85
+  min_intent_confidence_for_direct_answer: 0.95
+  clarification_prompt_threshold_confidence_range: [0.50, 0.84] # If confidence falls in this range, consider asking for clarification
+  max_entities_to_extract_per_intent: 10
+  default_human_escalation_queue: "General_Support_Queue"
+  log_full_input_data: true # Consider PII/privacy implications
+  enable_multi_intent_detection: true
+  multi_intent_handling_strategy: "primary_then_secondary_sequential_suggestion" # Options: "primary_only", "ask_user_to_choose", "create_parallel_tasks"
+  reasoning_log_verbosity: "detailed" # Options: "none", "summary", "detailed"
+
+# 5. Trigger Conditions
+trigger_conditions:
+  - event_source: "Main_Assistant_Request_Processing"
+    event_type: "determine_next_action_for_user_input"
+  - event_source: "Workflow_SMS_Inbound_Intent_Analysis"
+    event_type: "analyze_sms_for_intent_and_routing"
+  - event_source: "Mcp_Email_Inbound_Parser_Output"
+    event_type: "determine_email_intent_and_route"
+  - event_source: "Any_System_Requiring_NLU_And_Routing"
+    event_type: "generic_request_analysis_task"
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/mcp_thinking_agent.log"
+  log_fields_to_include: ["timestamp", "level", "request_id", "request_source", "user_id", "input_modality", "primary_intent", "intent_confidence", "extracted_entities_count", "action_decision", "target_mcp_or_workflow", "target_queue_if_escalated", "error_message"]
+monitoring:
+  metrics_endpoint: "http://localhost:9102/metrics"
+  alerting_rules:
+    - metric: "intent_recognition_failure_rate_nlu_service"
+      threshold: "5%"
+      notification_channel: "ai_core_team_alerts"
+    - metric: "avg_intent_recognition_confidence_below_target"
+      threshold_value: "<0.80"
+      evaluation_period: "hourly"
+      notification_channel: "ai_core_team_perf_alerts"
+    - metric: "human_escalation_rate_from_thinking_agent"
+      threshold: "20%"
+      notification_channel: "ai_platform_manager_reports"
+    - metric: "avg_thinking_agent_processing_time_ms"
+      threshold: "2000"
+      notification_channel: "ai_core_team_perf_alerts"
+
+# 7. Security & Permissions
+security:
+  # Access to configure the Thinking Agent is highly sensitive as it controls overall system behavior.
+  required_roles_for_managing_agent_config:
+    - "AICoreArchitectRole"
+    - "AutomationPlatformAdminRole"
+  handling_of_pii_in_input_data_policy_ref: "Company_PII_Handling_Policy_v2.1.pdf"
+  # API keys for NLU service are critical.
+  nlu_service_credential_rotation_policy_months: 6
+  data_encryption_at_rest: true # For logs and cached KB sections
+  data_encryption_in_transit: true # For all API calls (NLU, KB, User Context)
+
+# 8. Human-in-the-Loop (HITL) Configuration (For ambiguous routing or low confidence NLU)
+hitl_config:
+  enabled: true
+  trigger_on_intent_confidence_within_clarification_range: true # Uses `clarification_prompt_threshold_confidence_range`
+  trigger_on_no_clear_mcp_target_for_recognized_intent: true
+  trigger_on_critical_nlu_service_failure: true
+  escalation_queue_for_routing_decisions: "{{default_human_escalation_queue}}" # Can be overridden by specific rules
+  information_to_pass_to_human: ["request_id", "input_data", "user_context", "nlu_output_intents_and_confidences", "suggested_mcp_targets_if_any", "reason_for_escalation"]
+  max_wait_time_for_human_routing_decision_seconds: 1800 # 30 minutes for a human to decide on routing
+

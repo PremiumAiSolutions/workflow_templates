@@ -1,0 +1,132 @@
+# Configuration Template: Mcp Estimate
+
+# 1. General Settings
+assistant_workflow_name: "Mcp Estimate"
+version: "1.0.0"
+status: "Active"
+description: "Manages customer estimates and quotes, including creation, sending, status tracking, acceptance/decline, conversion to order/invoice, and report generation."
+owner_team: "Sales Department / Quoting Team"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "CRM_Sales_System_API" # e.g., Salesforce, HubSpot, Zoho CRM
+    api_endpoint: "https://api.salesforce.com/services/data/vXX.X/sobjects/Quote" # Example for Salesforce
+    auth_type: "OAuth2.0"
+    credentials_env_var_group: "CRM_SALES_API_CREDS"
+    timeout_seconds: 20
+    retry_attempts: 3
+    description: "The primary system for managing estimate records, customer opportunities, and sales data."
+  - service_name: "Product_Catalog_Service_API" # Or part of CRM/ERP
+    api_endpoint: "http://product-catalog-service/api/v1/products"
+    api_key_env_var: "PRODUCT_CATALOG_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "To fetch product/service details, standard pricing, and descriptions."
+  - service_name: "Mcp_Email_Assistant_API" # For sending estimates to customers
+    api_endpoint: "http://mcp-email-service/api/v1/send_automated_email_task"
+    api_key_env_var: "MCP_EMAIL_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "To send estimate PDFs and notifications to customers."
+  - service_name: "PDF_Generation_Service_API" # If not handled by CRM/Sales System
+    api_endpoint: "http://pdf-gen-service/api/v1/generate_pdf_from_template"
+    api_key_env_var: "PDF_GEN_API_KEY"
+    timeout_seconds: 15
+    retry_attempts: 2
+    description: "Service to generate PDF versions of estimates from structured data."
+  - service_name: "File_Storage_Service_API" # For storing generated estimate PDFs or reports
+    api_endpoint: "http://file-storage-service/api/v1/upload_file"
+    timeout_seconds: 30
+    retry_attempts: 2
+    description: "Service to save generated estimate PDFs and reports."
+  - service_name: "Order_Management_System_API" # For converting accepted estimates to orders
+    api_endpoint: "http://oms-system/api/v1/orders/create_from_estimate"
+    api_key_env_var: "OMS_API_KEY"
+    timeout_seconds: 15
+    retry_attempts: 2
+    description: "To create new sales orders based on accepted estimates."
+  - service_name: "Mcp_Invoice_Assistant_API" # Optional: For direct conversion to invoice
+    api_endpoint: "http://mcp-invoice-service/api/v1/invoice_task"
+    api_key_env_var: "MCP_INVOICE_API_KEY"
+    timeout_seconds: 15
+    retry_attempts: 2
+    description: "To directly create an invoice from an accepted estimate."
+
+# 3. Knowledge Base & Data Source Links/Paths
+knowledge_sources:
+  - name: "Estimate_Quote_Templates_KB"
+    type: "Mcp_Knowledge_Base_Section_or_FileSystem"
+    path_or_endpoint: "/path/to/estimate_templates/" # Or PDF_Generation_Service_API template IDs
+    description: "Templates for generating estimate PDFs (layout, company logo, terms)."
+  - name: "Pricing_Rules_Engine_KB_or_API"
+    type: "Mcp_Knowledge_Base_Section_or_External_API"
+    path_or_endpoint: "query: get_pricing_for_customer_segment={{segment}},product_id={{product_id}}"
+    description: "Source for complex pricing rules, volume discounts, customer-specific pricing."
+  - name: "Standard_Terms_And_Conditions_KB"
+    type: "Mcp_Knowledge_Base_Section"
+    path_or_endpoint: "/path/to/standard_estimate_terms.txt"
+    description: "Default terms and conditions for estimates."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  default_valid_until_days: 30 # Days from estimate creation date
+  estimate_number_prefix: "EST-"
+  estimate_number_sequence_start: 2001
+  currency_code: "USD"
+  currency_symbol: "$"
+  default_tax_rate_percent_estimate: 0 # Often taxes are finalized at invoicing stage, or can be estimated
+  estimate_status_lifecycle: ["Draft", "Sent", "Viewed", "Accepted", "Declined", "Expired", "Converted_to_Order", "Converted_to_Invoice"]
+  follow_up_reminder_days_before_expiry: [7, 3] # Send follow-up reminders before estimate expires
+  default_report_output_format: "csv"
+  auto_send_estimate_on_creation: false # Requires explicit send action
+
+# 5. Trigger Conditions
+trigger_conditions:
+  - event_source: "Main_Assistant_Delegation"
+    event_type: "manage_estimate_task"
+  - event_source: "CRM_System_Opportunity_Stage_Change"
+    event_type: "opportunity_requires_quote"
+  - event_source: "User_Interface_Sales_App"
+    event_type: "user_initiates_estimate_action"
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/mcp_estimate.log"
+  log_fields_to_include: ["timestamp", "level", "estimate_id", "customer_id", "opportunity_id", "action", "estimated_amount", "status", "error_message"]
+monitoring:
+  metrics_endpoint: "http://localhost:9099/metrics"
+  alerting_rules:
+    - metric: "estimate_creation_failure_rate"
+      threshold: "3%"
+      notification_channel: "sales_ops_alerts"
+    - metric: "estimate_to_order_conversion_rate_target_miss"
+      threshold_value: "<25%" # Example target
+      evaluation_period: "monthly"
+      notification_channel: "sales_manager_reports"
+    - metric: "avg_time_to_generate_estimate_seconds"
+      threshold: "900" # 15 minutes
+      notification_channel: "sales_ops_perf_alerts"
+
+# 7. Security & Permissions
+security:
+  required_roles_for_managing_estimates:
+    - "SalesRepresentativeRole"
+    - "SalesManagerRole"
+    - "QuotingSpecialistRole"
+    - "SystemAdminRole_For_Automated_Processes"
+  access_to_pricing_and_customer_data_policy_ref: "Company_Sales_Data_Access_Policy_v1.5.pdf"
+  data_encryption_at_rest: true # Handled by CRM/Sales System and local log/report storage
+  data_encryption_in_transit: true # TLS for all API calls
+
+# 8. Human-in-the-Loop (HITL) Configuration
+hitl_config:
+  enabled: true # For approval of large discounts, non-standard terms, or complex configurations
+  trigger_on_discount_exceeds_threshold_percent: 15
+  trigger_on_non_standard_terms_requested: true
+  trigger_on_estimate_total_exceeds_amount: 25000 # Amount in `currency_code`
+  trigger_on_failed_automated_pricing_for_complex_item: true
+  escalation_queue: "Sales_Manager_Approval_Queue"
+  information_to_pass_to_human: ["estimate_id_or_draft_id", "customer_id", "opportunity_id", "line_items_with_pricing", "requested_discount_or_terms", "reason_for_escalation"]
+  max_wait_time_for_human_approval_seconds: 43200 # 12 hours for estimate approval
+

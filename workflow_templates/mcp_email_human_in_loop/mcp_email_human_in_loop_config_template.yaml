@@ -1,0 +1,112 @@
+# Configuration Template: Mcp Email (Human in the Loop)
+
+# 1. General Settings
+assistant_workflow_name: "Mcp Email (Human in the Loop)"
+version: "1.0.0"
+status: "Active"
+description: "Drafts emails based on user requests or system triggers, then routes them for human review and approval before sending."
+owner_team: "Sales Support Team / Customer Service Team"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "Primary_Email_Gateway_Service"
+    api_endpoint: "https://api.emailprovider.com/v3/mail/send" # Same as No Human in Loop version
+    api_key_env_var: "EMAIL_GATEWAY_API_KEY"
+    timeout_seconds: 15
+    retry_attempts: 3
+    description: "Service used for actual email dispatch after approval."
+  - service_name: "Mcp_Knowledge_Base_API"
+    api_endpoint: "http://mcp-kb-service/api/v1/query"
+    api_key_env_var: "MCP_KB_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "Used to fetch source information, context, or base templates for drafting."
+  - service_name: "Human_Review_Workflow_System_API" # e.g., a task management or ticketing system
+    api_endpoint: "http://human-review-system/api/v1/create_review_task"
+    api_key_env_var: "REVIEW_SYSTEM_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "System where drafted emails are sent for human review and approval."
+  - service_name: "File_Storage_Service_API" # For accessing attachments
+    api_endpoint: "http://file-storage-service/api/v1/get_file"
+    timeout_seconds: 20
+    retry_attempts: 2
+    description: "Service to retrieve email attachments from a central store."
+
+# 3. Knowledge Base & Data Source Links/Paths
+knowledge_sources:
+  - name: "Email_Drafting_Templates_Repository"
+    type: "Database_or_FileSystem_or_KB_Section"
+    path_or_endpoint: "/path/to/email_draft_templates/" # Base templates for adaptation
+    access_credentials_env_var: "null"
+    description: "Location where base email templates for drafting are stored."
+  - name: "Company_Style_Guide_KB_Section"
+    type: "Mcp_Knowledge_Base_Query"
+    path_or_endpoint: "query: get_document_id_for_style_guide"
+    description: "Reference for tone, language, and formatting guidelines."
+  - name: "Suppression_List_DB"
+    type: "Database"
+    path_or_endpoint: "db_connection_string_for_suppression_list"
+    access_credentials_env_var: "SUPPRESSION_DB_PASS"
+    description: "Checked before final send, after approval."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  default_sender_email_after_approval: "support@yourcompany.com" # Or could be dynamic based on reviewer
+  default_sender_name_after_approval: "Your Company Support"
+  max_attachments_size_mb_total: 10
+  allowed_attachment_mime_types: ["application/pdf", "image/jpeg", "image/png", "text/csv", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+  default_review_urgency: "Medium"
+  max_draft_retention_days_unapproved: 30 # How long to keep unapproved drafts
+
+# 5. Trigger Conditions
+trigger_conditions:
+  - event_source: "Main_Assistant_Delegation"
+    event_type: "draft_email_for_review_task"
+  - event_source: "User_Interface_Manual_Request"
+    event_type: "user_requests_email_draft"
+  - event_source: "CRM_System_Complex_Event"
+    event_type: "customer_escalation_requires_personalized_reply"
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/mcp_email_human_in_loop.log"
+  log_fields_to_include: ["timestamp", "level", "draft_id", "recipient_email", "status", "reviewer_id", "final_message_id", "error_message"]
+monitoring:
+  metrics_endpoint: "http://localhost:9093/metrics"
+  alerting_rules:
+    - metric: "avg_draft_review_time_hours"
+      threshold: "24"
+      notification_channel: "customer_service_manager_email"
+    - metric: "draft_rejection_rate"
+      threshold: "15%"
+      notification_channel: "customer_service_manager_slack"
+    - metric: "email_send_failure_rate_post_approval"
+      threshold: "1%"
+      notification_channel: "sysops_alerts_email"
+
+# 7. Security & Permissions
+security:
+  required_roles_for_requesting_draft:
+    - "EmployeeRole"
+  required_roles_for_review_and_approval:
+    - "CustomerServiceAgentRole"
+    - "SalesSupportRole"
+    - "ManagerRole"
+  data_encryption_at_rest: true # For stored drafts, logs
+  data_encryption_in_transit: true # TLS for API calls and SMTP
+  pii_handling_policy_reference: "Company_PII_Handling_Policy_v1.2.pdf"
+
+# 8. Human-in-the-Loop (HITL) Configuration
+# This entire assistant IS the Human-in-the-Loop process for email sending.
+hitl_config:
+  enabled: true # Core function of this assistant
+  review_system_queue_name: "Email_Draft_Review_Queue"
+  default_assignee_group_for_review: "Customer_Service_Tier1"
+  sla_response_time_review_hours: 
+    High: 4
+    Medium: 8
+    Low: 24
+  actions_available_to_reviewer: ["Approve_Send", "Edit_Approve_Send", "Reject_Draft", "Reassign_Review"]
+

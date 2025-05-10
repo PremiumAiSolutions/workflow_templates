@@ -1,0 +1,104 @@
+# Configuration Template: Workflow - SMS Outbound
+
+# 1. General Settings
+workflow_name: "Workflow - SMS Outbound Sending"
+version: "1.0.0"
+status: "Active"
+description: "Handles the sending of outbound SMS messages, triggered by other Mcp assistants or system events, via a configured SMS gateway."
+owner_team: "Customer Communications Team / Operations Team"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "SMS_Gateway_Provider_API" # e.g., Twilio, Vonage (Nexmo), Plivo, AWS SNS
+    api_endpoint: "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages.json" # Example for Twilio Send Message
+    auth_type: "BasicAuth_AccountSid_AuthToken"
+    credentials_env_var_group: "SMS_GATEWAY_API_CREDS" # Store AccountSid & AuthToken securely
+    timeout_seconds: 15
+    retry_attempts: 3
+    description: "The SMS gateway used to send outbound messages."
+  - service_name: "CRM_System_API" # For opt-out list checking
+    api_endpoint: "http://crm-system/api/v1/contacts/check_sms_opt_out"
+    api_key_env_var: "CRM_API_KEY"
+    timeout_seconds: 5
+    retry_attempts: 2
+    description: "To check recipient opt-out status before sending marketing or non-essential messages."
+  - service_name: "URL_Shortener_Service_API" # Optional, for shortening links in SMS
+    api_endpoint: "http://url-shortener-service/api/v1/shorten"
+    api_key_env_var: "URL_SHORTENER_API_KEY"
+    timeout_seconds: 5
+    retry_attempts: 1
+    description: "To shorten URLs to save space in SMS messages."
+
+# 3. Knowledge Base & Data Source Links/Paths
+knowledge_sources:
+  - name: "Sender_Phone_Number_Mapping_KB"
+    type: "Mcp_Knowledge_Base_Section_or_ConfigMap"
+    path_or_endpoint: "/path/to/sender_phone_number_map.yaml"
+    description: "Maps internal sender_phone_number_ids (e.g., \"marketing_sms_line\") to actual phone numbers or messaging service SIDs provided by the gateway."
+  - name: "Opt_Out_List_DB_or_CRM_Query"
+    type: "CRM_System_API_Query_or_Local_DB"
+    path_or_endpoint: "query: get_sms_opt_out_status_for_phone={{recipient_phone_number}}"
+    description: "Source for checking if a recipient has opted out of SMS communications."
+  - name: "SMS_Compliance_Guidelines_KB"
+    type: "Mcp_Knowledge_Base_Section"
+    path_or_endpoint: "/path/to/sms_compliance_rules.md"
+    description: "Internal guidelines on SMS content, timing, and legal requirements (e.g., TCPA, GDPR)."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  default_sender_phone_number_id: "default_transactional_sms"
+  max_sms_segments_per_message: 3 # Standard SMS is 160 chars, longer messages are segmented.
+  character_set_validation: "GSM_7_bit_and_UCS2_fallback" # Ensure characters are SMS-friendly
+  check_opt_out_for_message_types: ["marketing_opt_in_only", "promotional", "general_notification"]
+  # Transactional messages like 2FA codes or critical alerts might bypass opt-out check based on policy.
+  log_full_sent_sms_body: true # Consider PII/privacy implications
+  url_shortening_enabled_for_message_types: ["marketing_opt_in_only", "notification"]
+  default_delivery_priority: "standard"
+
+# 5. Trigger Conditions
+trigger_conditions:
+  - event_source: "Mcp_Assistant_Request" # e.g., McpCalendar, McpInvoice, McpEstimate
+    event_type: "send_sms_message_task"
+  - event_source: "Workflow_SMS_Inbound_Response"
+    event_type: "send_automated_sms_reply"
+  - event_source: "System_Alert_Notification_Service"
+    event_type: "send_sms_alert_to_admin"
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/workflow_sms_outbound.log"
+  log_fields_to_include: ["timestamp", "level", "tracking_id", "gateway_message_id", "recipient_phone_number", "sender_phone_number_used", "message_type", "status", "error_message", "segments_sent"]
+monitoring:
+  metrics_endpoint: "http://localhost:9101/metrics"
+  alerting_rules:
+    - metric: "sms_send_failure_rate_gateway"
+      threshold: "2%"
+      notification_channel: "comms_gateway_alerts"
+    - metric: "sms_delivery_failure_rate_reported_by_gateway"
+      threshold: "5%"
+      notification_channel: "comms_delivery_alerts"
+    - metric: "avg_sms_send_latency_ms"
+      threshold: "5000"
+      notification_channel: "comms_perf_alerts"
+
+# 7. Security & Permissions
+security:
+  # This workflow is typically system-triggered, but access to its configuration and logs needs control.
+  required_roles_for_managing_workflow_config:
+    - "CommunicationsAdminRole"
+    - "SystemAdminRole"
+  handling_of_pii_in_sms_policy_ref: "Company_PII_Handling_Policy_v2.1.pdf"
+  # API keys for SMS Gateway are highly sensitive.
+  sms_gateway_credential_rotation_policy_months: 6
+  data_encryption_at_rest: true # For logs
+  data_encryption_in_transit: true # For API calls to SMS Gateway
+
+# 8. Human-in-the-Loop (HITL) Configuration (Typically not for outbound sending itself, but for failures or template issues)
+hitl_config:
+  enabled: false # Outbound sending is usually fully automated. HITL might be for template management or persistent delivery failures.
+  # If enabled for specific failure scenarios:
+  # trigger_on_persistent_delivery_failure_to_valid_number: true
+  # escalation_queue: "SMS_Delivery_Specialist_Queue"
+  # information_to_pass_to_human: ["tracking_id", "recipient_phone_number", "message_body_sent", "gateway_error_codes", "delivery_reports_if_any"]
+

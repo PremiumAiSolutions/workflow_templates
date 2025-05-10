@@ -1,0 +1,102 @@
+# Configuration Template: Mcp Email (No Human in the Loop)
+
+# 1. General Settings
+assistant_workflow_name: "Mcp Email (No Human in the Loop)"
+version: "1.0.0"
+status: "Active"
+description: "Handles fully automated email sending based on predefined templates and triggers, without human review before dispatch."
+owner_team: "Marketing Automation Team / System Operations"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "Primary_Email_Gateway_Service"
+    api_endpoint: "https://api.emailprovider.com/v3/mail/send" # Example for SendGrid/Mailgun etc.
+    api_key_env_var: "EMAIL_GATEWAY_API_KEY"
+    timeout_seconds: 15
+    retry_attempts: 3
+    description: "Service used for actual email dispatch."
+  - service_name: "Mcp_Knowledge_Base_API" # For retrieving email templates or dynamic content
+    api_endpoint: "http://mcp-kb-service/api/v1/query"
+    api_key_env_var: "MCP_KB_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "Used to fetch email template content if stored in KB."
+  - service_name: "File_Storage_Service_API" # For accessing attachments
+    api_endpoint: "http://file-storage-service/api/v1/get_file"
+    # api_key_env_var: "FILE_STORAGE_API_KEY"
+    timeout_seconds: 20
+    retry_attempts: 2
+    description: "Service to retrieve email attachments from a central store."
+
+# 3. Knowledge Base & Data Source Links/Paths
+knowledge_sources:
+  - name: "Email_Templates_Repository"
+    type: "Database_or_FileSystem_or_KB_Section"
+    path_or_endpoint: "/path/to/email_templates/" # or query to Mcp KB for template_id
+    access_credentials_env_var: "null"
+    description: "Location where pre-approved email templates are stored."
+  - name: "Suppression_List_DB"
+    type: "Database"
+    path_or_endpoint: "db_connection_string_for_suppression_list"
+    access_credentials_env_var: "SUPPRESSION_DB_PASS"
+    description: "Database of email addresses that should not receive automated emails (unsubscribes, bounces)."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  default_sender_email: "noreply@yourcompany.com"
+  default_sender_name: "Your Company Name"
+  max_attachments_size_mb_total: 10
+  allowed_attachment_mime_types: ["application/pdf", "image/jpeg", "image/png", "text/csv"]
+  unsubscribe_link_template: "https://yourcompany.com/unsubscribe?email={{recipient_email}}&token={{unsubscribe_token}}"
+  email_open_tracking_enabled: true
+  email_click_tracking_enabled: true
+  rate_limit_per_minute: 100 # Max emails to send per minute
+
+# 5. Trigger Conditions
+trigger_conditions:
+  - event_source: "Main_Assistant_Delegation"
+    event_type: "send_automated_email_task"
+  - event_source: "CRM_System_Webhook"
+    event_type: "new_user_registration_event"
+    filters:
+      - field: "user_status"
+        value: "verified"
+  - event_source: "Scheduler_Service"
+    event_type: "scheduled_batch_email_job"
+    # cron_expression: "0 9 * * MON" # Example: Every Monday at 9 AM
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/mcp_email_no_human.log"
+  log_fields_to_include: ["timestamp", "level", "message_id", "recipient_email", "template_id", "status", "error_message"]
+monitoring:
+  metrics_endpoint: "http://localhost:9092/metrics"
+  alerting_rules:
+    - metric: "email_send_failure_rate"
+      threshold: "2%"
+      notification_channel: "marketing_ops_alerts_email"
+    - metric: "email_bounce_rate_hard"
+      threshold: "1%"
+      notification_channel: "marketing_ops_alerts_slack"
+    - metric: "email_queue_length"
+      threshold: "500"
+      notification_channel: "sysops_alerts_pagerduty"
+
+# 7. Security & Permissions
+security:
+  required_roles_for_triggering:
+    - "SystemAutomatedProcessRole"
+    - "MarketingManagerRole" # For triggering specific campaigns
+  data_encryption_at_rest: true # For stored templates, logs
+  data_encryption_in_transit: true # TLS for API calls and SMTP
+  pii_handling_policy_reference: "Company_PII_Handling_Policy_v1.2.pdf"
+
+# 8. Human-in-the-Loop (HITL) Configuration
+# This is the "No Human in the Loop" version, so HITL is explicitly disabled or minimal.
+hitl_config:
+  enabled: false
+  # If any minimal HITL is ever considered (e.g., for critical system failure alerts):
+  # escalation_queue: "SysAdmin_Critical_Email_Failure_Queue"
+  # trigger_on_system_error_rate_exceeded: "5%_in_5_minutes"
+

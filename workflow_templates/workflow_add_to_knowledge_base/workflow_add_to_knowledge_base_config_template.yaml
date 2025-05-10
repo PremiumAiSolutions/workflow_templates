@@ -1,0 +1,118 @@
+# Configuration Template: Workflow - Add to Knowledge Base
+
+# 1. General Settings
+workflow_name: "Workflow - Add to Knowledge Base"
+version: "1.0.0"
+status: "Active"
+description: "Processes newly added or updated documents from various sources, extracts content, analyzes, structures, and prepares it for ingestion into the Mcp Knowledge Base."
+owner_team: "Knowledge Management Team / AI Content Team"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "Document_Source_File_Access_API_or_SDK" # e.g., Local FS, S3 SDK, DMS API
+    # Configuration depends on source type, e.g., base_path for file_system
+    description: "Interface to access the raw document content from its source URI."
+  - service_name: "Text_Extraction_Service_API" # e.g., Apache Tika, AWS Textract, Azure Form Recognizer, or custom parsers
+    api_endpoint: "http://text-extraction-service/api/v1/extract"
+    # auth_type: ...
+    # credentials_env_var: ...
+    timeout_seconds: 120 # Can be long for large PDFs with OCR
+    retry_attempts: 1
+    description: "Service to extract text content from various document formats (PDF, DOCX, TXT, HTML, etc.), including OCR for images."
+  - service_name: "Mcp_Thinking_Agent_API_or_Specialized_NLU_Service" # For content analysis
+    api_endpoint: "http://mcp-thinking-agent/api/v1/analyze_document_content_for_kb"
+    api_key_env_var: "MCP_THINKING_AGENT_API_KEY"
+    timeout_seconds: 180 # Content analysis can be intensive
+    retry_attempts: 1
+    description: "For advanced content analysis: structure identification, summarization, keyword/tag generation, Q&A extraction, PII detection."
+  - service_name: "Mcp_Knowledge_Base_API" # For checking existing entries and potentially direct ingestion
+    api_endpoint: "http://mcp-kb-service/api/v1/manage_kb_entry"
+    api_key_env_var: "MCP_KB_API_KEY"
+    timeout_seconds: 30
+    retry_attempts: 2
+    description: "To check for existing document versions in KB and to ingest the processed content."
+
+# 3. Knowledge Base & Data Source Links/Paths (for the workflow itself, not the target KB)
+knowledge_sources:
+  - name: "Supported_Document_Formats_List"
+    type: "Internal_Config_List"
+    value: ["pdf", "docx", "txt", "md", "html", "pptx"]
+    description: "List of document file extensions/MIME types this workflow can process."
+  - name: "PII_Detection_Patterns_KB"
+    type: "Mcp_Knowledge_Base_Section_or_Regex_Library"
+    path_or_endpoint: "/path/to/pii_detection_rules.yaml"
+    description: "Patterns and rules for identifying Personally Identifiable Information if redaction/flagging is enabled."
+  - name: "KB_Section_Categorization_Rules_KB"
+    type: "Mcp_Knowledge_Base_Section_or_ML_Model_Endpoint"
+    path_or_endpoint: "query: get_kb_categorization_rules_for_doc_type={{document_type_hint}}"
+    description: "Rules or model to suggest target KB sections based on document content/metadata."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  default_document_language: "en-US"
+  max_document_size_mb_for_processing: 50
+  ocr_enabled_for_pdf_images: true
+  min_text_extraction_quality_score_for_auto_ingestion: 0.80 # If Text Extraction Service provides a score
+  content_chunking_strategy: "by_section_or_paragraph"
+  max_chunk_size_tokens_for_kb: 512 # For compatibility with embedding models or KB limits
+  auto_generate_tags_count: 5
+  auto_summarization_enabled: true
+  default_ingestion_mode_for_new_event: "create_new"
+  default_ingestion_mode_for_update_event: "replace_existing_if_found_else_create"
+  human_review_queue_kb_content: "KB_Content_Review_Queue"
+  pii_handling_action: "flag_for_review" # Options: "none", "redact_auto", "flag_for_review"
+  direct_ingest_to_kb_after_processing: true # If false, output is just prepared data for a separate ingestion step
+
+# 5. Trigger Conditions
+trigger_conditions:
+  - event_source: "File_System_Monitor_Service"
+    event_type: "new_document_added_or_updated_in_watched_folder"
+    # config: watched_folders: ["/mnt/shared_drive/knowledge_docs/", "/mnt/another_drive/policies/"]
+  - event_source: "Document_Management_System_Webhook"
+    event_type: "document_created_or_version_updated_event"
+    # config: dms_instance_url: "https://mycompany.dms.com", subscribed_collections: ["HR_Policies", "Product_Specs"]
+  - event_source: "Manual_Upload_Interface_or_API_Endpoint"
+    event_type: "user_submits_document_for_kb_ingestion"
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/workflow_add_to_kb.log"
+  log_fields_to_include: ["timestamp", "level", "trigger_timestamp", "document_uri", "document_source_type", "event_type", "status", "extracted_chunks_count", "quality_score_if_any", "ingestion_mode_determined", "target_kb_sections_suggested", "error_message"]
+monitoring:
+  metrics_endpoint: "http://localhost:9103/metrics"
+  alerting_rules:
+    - metric: "document_processing_failure_rate"
+      threshold: "10%"
+      notification_channel: "km_team_alerts"
+    - metric: "avg_document_processing_time_seconds"
+      threshold: "300"
+      notification_channel: "km_team_perf_alerts"
+    - metric: "human_review_queue_length_kb_content"
+      threshold: "50"
+      notification_channel: "km_manager_reports"
+
+# 7. Security & Permissions
+security:
+  # Access to configure this workflow and its interaction with document sources is critical.
+  required_roles_for_managing_workflow_config:
+    - "KnowledgeManagerAdminRole"
+    - "SystemAdminRole"
+  access_credentials_for_document_sources_env_var_group: "DOC_SOURCE_ACCESS_CREDS"
+  handling_of_sensitive_info_in_documents_policy_ref: "Company_Sensitive_Data_Handling_Policy_v1.8.pdf"
+  # API keys for Text Extraction, Thinking Agent, KB API.
+  data_encryption_at_rest: true # For cached documents during processing and logs
+  data_encryption_in_transit: true # For all API calls and document fetching
+
+# 8. Human-in-the-Loop (HITL) Configuration (for content quality review)
+hitl_config:
+  enabled: true
+  trigger_on_low_text_extraction_quality_score: true # Uses `min_text_extraction_quality_score_for_auto_ingestion`
+  trigger_on_low_content_analysis_confidence_score: 0.70 # If Thinking Agent provides this
+  trigger_on_ambiguous_kb_section_categorization: true
+  trigger_on_pii_flagged_if_action_is_flag: true
+  trigger_on_unsupported_document_structure_for_auto_chunking: true
+  escalation_queue: "{{human_review_queue_kb_content}}"
+  information_to_pass_to_human: ["document_uri", "document_metadata", "extracted_text_preview_or_full", "suggested_chunks_preview", "suggested_title_tags_sections", "reason_for_review", "pii_locations_if_flagged"]
+  max_wait_time_for_human_review_seconds: 604800 # 7 days for content review
+

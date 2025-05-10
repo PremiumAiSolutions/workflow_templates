@@ -1,0 +1,115 @@
+# Configuration Template: Mcp Dispatch
+
+# 1. General Settings
+assistant_workflow_name: "Mcp Dispatch"
+version: "1.0.0"
+status: "Active"
+description: "Manages the assignment of tasks, jobs, or resources (e.g., field technicians, delivery drivers) to specific targets based on availability, proximity, skills, and priority."
+owner_team: "Operations Team / Field Services Management"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "Resource_Management_System_API" # System tracking personnel, vehicles, equipment
+    api_endpoint: "http://resource-mgmt-system/api/v1/resources"
+    api_key_env_var: "RESOURCE_MGMT_API_KEY"
+    timeout_seconds: 15
+    retry_attempts: 3
+    description: "To query resource availability, skills, current location/status."
+  - service_name: "Geo_Location_Service_API" # e.g., Google Maps API, Mapbox API
+    api_endpoint: "https://maps.googleapis.com/maps/api/directions/json" # Example for ETA/routing
+    api_key_env_var: "GEO_LOCATION_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "For calculating distances, ETAs, and optimizing routes."
+  - service_name: "Task_Management_System_API" # Where tasks/jobs are defined and updated
+    api_endpoint: "http://task-mgmt-system/api/v1/tasks"
+    api_key_env_var: "TASK_MGMT_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "To update task status (e.g., assigned, en route, completed)."
+  - service_name: "Mobile_Worker_Notification_API" # For sending job details to field staff
+    api_endpoint: "http://mobile-notify-service/api/v1/send_job"
+    api_key_env_var: "MOBILE_NOTIFY_API_KEY"
+    timeout_seconds: 5
+    retry_attempts: 3
+    description: "To push task details to the assigned resource's mobile device/app."
+  - service_name: "Mcp_Knowledge_Base_API"
+    api_endpoint: "http://mcp-kb-service/api/v1/query"
+    api_key_env_var: "MCP_KB_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "Optional: For fetching standard operating procedures for tasks, safety guidelines, or customer history related to location."
+
+# 3. Knowledge Base & Data Source Links/Paths
+knowledge_sources:
+  - name: "Resource_Skill_Matrix_KB"
+    type: "Resource_Management_System_API_Query_or_Mcp_KB_Section"
+    path_or_endpoint: "query: get_resource_skills_for_id={{resource_id}}"
+    description: "Maps resources to their certified skills and qualifications."
+  - name: "Service_Area_Definitions_KB"
+    type: "Mcp_Knowledge_Base_Query_or_Geo_Service_Data"
+    path_or_endpoint: "query: get_service_zones_for_region={{region_name}}"
+    description: "Defines geographical service areas or territories for resources."
+  - name: "Task_Priority_Rules_KB"
+    type: "Mcp_Knowledge_Base_Section"
+    path_or_endpoint: "/path/to/dispatch_priority_rules.yaml"
+    description: "Business rules for how different task priorities affect dispatch decisions."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  dispatch_algorithm: "nearest_available_skilled" # Options: "nearest_available_skilled", "round_robin_skilled", "lowest_workload_skilled", "skill_priority_then_nearest"
+  max_travel_time_minutes_for_eta: 120
+  default_preparation_time_minutes: 15 # Time resource needs before starting travel
+  real_time_traffic_consideration_for_eta: true
+  skill_match_strictness: "exact_match_all" # Options: "exact_match_all", "at_least_one_match", "weighted_match"
+  auto_accept_dispatch_timeout_seconds: 300 # If resource doesn't respond to dispatch notification
+
+# 5. Trigger Conditions
+trigger_conditions:
+  - event_source: "Main_Assistant_Delegation"
+    event_type: "dispatch_task_job_resource"
+  - event_source: "CRM_System_Service_Request"
+    event_type: "new_field_service_request_created"
+  - event_source: "IoT_Platform_Alert"
+    event_type: "equipment_failure_alert_requires_technician"
+  - event_source: "Manual_Dispatch_Interface_Request"
+    event_type: "user_requests_manual_dispatch"
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/mcp_dispatch.log"
+  log_fields_to_include: ["timestamp", "level", "dispatch_id", "task_job_id", "assigned_resource_id", "target_location", "status", "eta_minutes", "error_message"]
+monitoring:
+  metrics_endpoint: "http://localhost:9096/metrics"
+  alerting_rules:
+    - metric: "dispatch_failure_rate_no_resource"
+      threshold: "5%"
+      notification_channel: "operations_manager_alerts"
+    - metric: "avg_time_to_dispatch_seconds"
+      threshold: "300"
+      notification_channel: "operations_manager_perf_alerts"
+    - metric: "resource_rejection_rate_of_dispatches"
+      threshold: "10%"
+      notification_channel: "operations_manager_alerts"
+
+# 7. Security & Permissions
+security:
+  required_roles_for_triggering_dispatch:
+    - "SystemAutomatedProcessRole"
+    - "CustomerServiceManagerRole"
+    - "OperationsCoordinatorRole"
+  data_encryption_at_rest: true # For logs, task details
+  data_encryption_in_transit: true # TLS for all API calls
+  access_to_resource_location_data: "RestrictedToDispatchLogicAndAuthorizedPersonnel"
+
+# 8. Human-in-the-Loop (HITL) Configuration
+hitl_config:
+  enabled: true # For when automated dispatch fails or complex decisions are needed
+  trigger_on_no_suitable_resource_found: true
+  trigger_on_multiple_equally_viable_resources_for_high_priority: true
+  trigger_on_resource_rejects_critical_dispatch: true
+  escalation_queue: "Human_Dispatch_Coordinator_Queue"
+  information_to_pass_to_human: ["task_job_id", "task_details", "target_location", "required_skills", "priority", "failed_dispatch_reason", "suggested_resources_if_any"]
+  max_wait_time_for_human_decision_seconds: 1800 # 30 minutes for dispatch assistance
+

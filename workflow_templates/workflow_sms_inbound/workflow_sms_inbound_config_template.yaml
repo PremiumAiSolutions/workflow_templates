@@ -1,0 +1,118 @@
+# Configuration Template: Workflow - SMS Inbound
+
+# 1. General Settings
+workflow_name: "Workflow - SMS Inbound Processing"
+version: "1.0.0"
+status: "Active"
+description: "Handles incoming SMS messages, performs intent recognition, and routes them to appropriate Mcp assistants or human agents."
+owner_team: "Customer Communications Team / Operations Team"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "SMS_Gateway_Provider_API" # e.g., Twilio, Vonage (Nexmo), Plivo, AWS SNS
+    # This workflow is typically triggered BY the gateway, so direct API calls might be for logging or fetching message details if not all provided in trigger.
+    # api_endpoint: "https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages/{MessageSid}.json" # Example for fetching details
+    # auth_type: "BasicAuth_AccountSid_AuthToken"
+    # credentials_env_var_group: "SMS_GATEWAY_API_CREDS"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "The SMS gateway that receives messages and triggers this workflow."
+  - service_name: "CRM_System_API"
+    api_endpoint: "http://crm-system/api/v1/contacts/lookup_by_phone"
+    api_key_env_var: "CRM_API_KEY"
+    timeout_seconds: 5
+    retry_attempts: 3
+    description: "To identify sender by phone number and retrieve customer context."
+  - service_name: "Mcp_Thinking_Agent_API" # For intent recognition and routing logic
+    api_endpoint: "http://mcp-thinking-agent/api/v1/process_text_input"
+    api_key_env_var: "MCP_THINKING_AGENT_API_KEY"
+    timeout_seconds: 15
+    retry_attempts: 2
+    description: "Core NLU and decision-making engine for routing SMS."
+  - service_name: "Mcp_Knowledge_Base_API"
+    api_endpoint: "http://mcp-kb-service/api/v1/query_faq_sms"
+    api_key_env_var: "MCP_KB_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "For handling simple FAQ queries received via SMS."
+  - service_name: "Mcp_SMS_Outbound_Workflow_API" # To send replies
+    api_endpoint: "http://mcp-sms-outbound-workflow/api/v1/send_sms_task"
+    api_key_env_var: "MCP_SMS_OUTBOUND_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "To send automated replies or confirmations."
+  # Specific Mcp Assistant APIs for routing (examples):
+  - service_name: "Mcp_Calendar_API"
+    api_endpoint: "http://mcp-calendar-service/api/v1/calendar_task_from_sms"
+    # ... other Mcp APIs as needed ...
+
+# 3. Knowledge Base & Data Source Links/Paths
+knowledge_sources:
+  - name: "SMS_Intent_Recognition_Rules_KB"
+    type: "Mcp_Thinking_Agent_Configuration_or_Mcp_KB_Section"
+    path_or_endpoint: "query: get_sms_intent_rules_for_number={{recipient_phone_number}}"
+    description: "Rules, keywords, and NLU model references for parsing SMS intent."
+  - name: "Standard_SMS_Replies_KB"
+    type: "Mcp_Knowledge_Base_Section"
+    path_or_endpoint: "/path/to/sms_standard_replies.yaml"
+    description: "Templates for common automated SMS replies (e.g., HELP, INFO, acknowledgement)."
+  - name: "Opt_Out_List_DB"
+    type: "Database_or_CRM_Field"
+    path_or_endpoint: "crm_field: sms_opt_out_status"
+    description: "List of phone numbers that have opted out of SMS communications."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  default_country_code_for_lookup: "US"
+  max_sms_length_for_auto_reply: 160 # Characters
+  supported_keywords_auto_handle: ["STOP", "START", "HELP", "INFO"]
+  unknown_sender_escalation_policy: "attempt_generic_faq_then_escalate_human" # Options: "escalate_human_immediately", "send_generic_ack_then_escalate_human"
+  intent_confidence_threshold_for_mcp_routing: 0.75 # For Mcp Thinking Agent output
+  human_escalation_queue_sms: "Tier1_SMS_Support_Queue"
+  log_full_sms_body: true # Consider PII/privacy implications
+
+# 5. Trigger Conditions
+trigger_conditions:
+  - event_source: "SMS_Gateway_Provider_Webhook"
+    event_type: "new_incoming_sms_message"
+    # Webhook URL for this workflow: https://this-workflow-engine/api/v1/sms_inbound_trigger
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/workflow_sms_inbound.log"
+  log_fields_to_include: ["timestamp", "level", "message_id", "sender_phone_number", "recipient_phone_number", "parsed_intent", "routed_to_mcp", "action_taken", "error_message"]
+monitoring:
+  metrics_endpoint: "http://localhost:9100/metrics"
+  alerting_rules:
+    - metric: "sms_processing_failure_rate"
+      threshold: "5%"
+      notification_channel: "comms_team_alerts"
+    - metric: "avg_sms_intent_recognition_confidence"
+      threshold_value: "<0.80"
+      evaluation_period: "hourly"
+      notification_channel: "comms_team_perf_alerts"
+    - metric: "human_escalation_rate_from_sms"
+      threshold: "30%"
+      notification_channel: "comms_manager_reports"
+
+# 7. Security & Permissions
+security:
+  # This workflow is typically system-triggered, but access to its configuration and logs needs control.
+  required_roles_for_managing_workflow_config:
+    - "CommunicationsAdminRole"
+    - "SystemAdminRole"
+  handling_of_pii_in_sms_policy_ref: "Company_PII_Handling_Policy_v2.1.pdf"
+  data_encryption_at_rest: true # For logs
+  data_encryption_in_transit: true # For API calls (especially to Thinking Agent with message body)
+
+# 8. Human-in-the-Loop (HITL) Configuration (for routing decisions if Thinking Agent is unsure)
+hitl_config:
+  enabled: true # If Mcp Thinking Agent returns low confidence or "unknown_intent"
+  trigger_on_intent_confidence_below_threshold: 0.60
+  trigger_on_unknown_intent_from_thinking_agent: true
+  trigger_on_multiple_high_confidence_conflicting_intents: true
+  escalation_queue: "{{human_escalation_queue_sms}}" # Defined in workflow_parameters
+  information_to_pass_to_human: ["message_id", "sender_phone_number", "sms_message_body", "identified_customer_if_any", "thinking_agent_output_intents_and_confidences"]
+  max_wait_time_for_human_routing_decision_seconds: 1800 # 30 minutes for a human to categorize/route an SMS
+

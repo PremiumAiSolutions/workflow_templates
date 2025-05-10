@@ -1,0 +1,101 @@
+# Configuration Template: Mcp Calendar
+
+# 1. General Settings
+assistant_workflow_name: "Mcp Calendar"
+version: "1.0.0"
+status: "Active"
+description: "Manages calendar events, including creation, finding, updating, and deleting events on behalf of users or systems."
+owner_team: "Office Administration Team / IT Support"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "Primary_Calendar_Service_API" # e.g., Google Calendar API, Microsoft Graph API for Outlook Calendar
+    api_endpoint: "https://www.googleapis.com/calendar/v3/calendars" # Example for Google Calendar
+    # or "https://graph.microsoft.com/v1.0/me/calendars" # Example for Microsoft Graph
+    auth_type: "OAuth2.0" # Or API Key, Service Account, etc.
+    credentials_env_var_group: "MCP_CALENDAR_API_CREDS" # Points to a group of env vars like CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN or SERVICE_ACCOUNT_KEY_PATH
+    timeout_seconds: 20
+    retry_attempts: 3
+    description: "The main calendar provider service this Mcp assistant interacts with."
+  - service_name: "Mcp_Knowledge_Base_API" # For fetching user preferences, room availability, etc.
+    api_endpoint: "http://mcp-kb-service/api/v1/query"
+    api_key_env_var: "MCP_KB_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "Optional: Used to fetch contextual information like user working hours or meeting room details."
+  - service_name: "User_Directory_Service_API" # e.g., LDAP, Azure AD
+    api_endpoint: "http://user-directory-service/api/v1/users"
+    api_key_env_var: "USER_DIRECTORY_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 2
+    description: "To resolve user email addresses, check availability (if supported)."
+
+# 3. Knowledge Base & Data Source Links/Paths
+knowledge_sources:
+  - name: "User_Calendar_Preferences_KB"
+    type: "Mcp_Knowledge_Base_Query"
+    path_or_endpoint: "query: get_user_calendar_prefs_for_user_id={{user_id}}"
+    description: "Stores user-specific calendar settings like default meeting duration, working hours, preferred meeting times."
+  - name: "Meeting_Room_Resource_List_KB"
+    type: "Mcp_Knowledge_Base_Query"
+    path_or_endpoint: "query: list_available_meeting_rooms_with_capacity"
+    description: "Information about available meeting rooms, their capacity, and equipment."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  default_event_duration_minutes: 30
+  default_notification_time_before_event_minutes: 15 # For reminders, if Mcp Calendar handles them
+  working_hours_start: "09:00"
+  working_hours_end: "17:00"
+  default_timezone: "America/New_York" # Should be configurable per user or company-wide
+  conflict_resolution_strategy: "suggest_next_available_slot" # Options: "fail_if_conflict", "suggest_next_available_slot", "auto_reschedule_lower_priority"
+  max_attendees_for_auto_room_booking: 10
+
+# 5. Trigger Conditions
+trigger_conditions:
+  - event_source: "Main_Assistant_Delegation"
+    event_type: "manage_calendar_event_task"
+  - event_source: "User_Interface_Calendar_App"
+    event_type: "user_performs_calendar_action"
+  - event_source: "Workflow_System_Event" # e.g., Project milestone reached, trigger follow-up meeting
+    event_type: "schedule_project_review_meeting"
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/mcp_calendar.log"
+  log_fields_to_include: ["timestamp", "level", "action", "user_id", "event_id", "status", "error_message"]
+monitoring:
+  metrics_endpoint: "http://localhost:9094/metrics"
+  alerting_rules:
+    - metric: "calendar_api_error_rate"
+      threshold: "5%"
+      notification_channel: "it_support_alerts_email"
+    - metric: "event_creation_failure_rate"
+      threshold: "2%"
+      notification_channel: "office_admin_alerts_slack"
+    - metric: "avg_calendar_api_latency_ms"
+      threshold: "1000"
+      notification_channel: "it_support_perf_alerts"
+
+# 7. Security & Permissions
+security:
+  required_roles_for_managing_own_calendar:
+    - "EmployeeRole"
+  required_roles_for_managing_others_calendars: # Requires delegation/permissions in underlying calendar system
+    - "ExecutiveAssistantRole"
+    - "ManagerRole_With_Delegation"
+    - "SystemAdminRole"
+  data_encryption_at_rest: true # Handled by calendar service provider
+  data_encryption_in_transit: true # TLS for API calls
+  oauth_scope_requirements: # Example for Google Calendar
+    - "https://www.googleapis.com/auth/calendar.events"
+    - "https://www.googleapis.com/auth/calendar.readonly"
+
+# 8. Human-in-the-Loop (HITL) Configuration (Typically not for core calendar functions, but maybe for complex scheduling conflicts)
+hitl_config:
+  enabled: false # Default to false, as calendar actions are usually direct
+  # trigger_on_persistent_scheduling_conflict: true
+  # escalation_queue: "Office_Admin_Scheduling_Assistance_Queue"
+  # max_wait_time_for_human_seconds: 3600 # 1 hour for scheduling assistance
+

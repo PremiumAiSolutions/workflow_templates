@@ -1,0 +1,112 @@
+# Configuration Template: Mcp Scrape
+
+# 1. General Settings
+assistant_workflow_name: "Mcp Scrape"
+version: "1.0.0"
+status: "Active"
+description: "Extracts specific data or content from web pages based on defined selectors or patterns. Handles single or multiple URLs and various output formats."
+owner_team: "Data Acquisition Team / Research Team"
+
+# 2. API & Service Integrations
+integrations:
+  - service_name: "Web_Scraping_Engine" # e.g., Playwright, Selenium, BeautifulSoup, Scrapy (managed internally or as a service)
+    # No direct API endpoint if it's an internal library, but configuration for it.
+    # If it's an external service:
+    # api_endpoint: "http://external-scraping-service/api/v1/scrape"
+    # api_key_env_var: "SCRAPING_SERVICE_API_KEY"
+    timeout_seconds_per_url: 120 # Max time to spend on a single URL
+    max_concurrent_requests: 5
+    description: "The core engine or library used for fetching and parsing web content."
+  - service_name: "Proxy_Service_API" # Optional, if proxies are used
+    api_endpoint: "http://proxy-provider-service/api/v1/get_proxy"
+    api_key_env_var: "PROXY_SERVICE_API_KEY"
+    timeout_seconds: 10
+    retry_attempts: 3
+    description: "Service to fetch proxies for scraping to avoid IP blocks."
+  - service_name: "Mcp_Knowledge_Base_API" # For storing scraped data or fetching scraping configurations
+    api_endpoint: "http://mcp-kb-service/api/v1/documents"
+    api_key_env_var: "MCP_KB_API_KEY"
+    timeout_seconds: 15
+    retry_attempts: 2
+    description: "Optional: For storing structured scraped data directly into the KB."
+  - service_name: "File_Storage_Service_API" # For saving output files
+    api_endpoint: "http://file-storage-service/api/v1/upload_file"
+    # api_key_env_var: "FILE_STORAGE_API_KEY"
+    timeout_seconds: 30
+    retry_attempts: 2
+    description: "Service to save scraped data files (CSV, JSON, text)."
+
+# 3. Knowledge Base & Data Source Links/Paths
+knowledge_sources:
+  - name: "Robots_txt_Cache_DB"
+    type: "Database_or_FileSystem"
+    path_or_endpoint: "/path/to/robots_txt_cache/"
+    description: "Local cache for robots.txt files to reduce redundant fetching (if respecting robots.txt)."
+  - name: "Predefined_Scraping_Jobs_KB"
+    type: "Mcp_Knowledge_Base_Section"
+    path_or_endpoint: "query: get_scraping_job_config_by_id={{job_id}}"
+    description: "Stores configurations for recurring or complex scraping tasks."
+
+# 4. Workflow-Specific Parameters
+workflow_parameters:
+  default_user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36 McpScraper/1.0"
+  respect_robots_txt: true
+  default_delay_between_requests_ms: 1000 # For a single domain, to be polite
+  max_retries_per_url_on_network_error: 3
+  default_render_javascript: false
+  default_scroll_to_bottom_times: 0
+  allowed_output_formats: ["json", "csv", "text_file_per_url", "markdown", "raw_html"]
+  max_output_file_size_mb: 50
+  default_on_error_handling: "return_partial_data_log_errors" # Options: "skip_url_on_error", "return_partial_data_log_errors", "fail_task_on_any_error"
+
+# 5. Trigger Conditions
+trigger_conditions:
+  - event_source: "Main_Assistant_Delegation"
+    event_type: "scrape_web_content_task"
+  - event_source: "Scheduler_Service"
+    event_type: "scheduled_data_scraping_job"
+  - event_source: "User_Interface_Manual_Request"
+    event_type: "user_initiates_ad_hoc_scrape"
+  - event_source: "Workflow_System_Event" # e.g., New competitor product detected, scrape details
+    event_type: "trigger_targeted_scrape_for_analysis"
+
+# 6. Logging & Monitoring
+logging:
+  log_level: "INFO"
+  log_destination: "/var/log/mcp_scrape.log"
+  log_fields_to_include: ["timestamp", "level", "scrape_job_id", "url_processed", "status", "items_extracted_count", "error_message", "output_file_path"]
+monitoring:
+  metrics_endpoint: "http://localhost:9097/metrics"
+  alerting_rules:
+    - metric: "scraping_error_rate_per_url"
+      threshold: "20%"
+      notification_channel: "data_acquisition_alerts"
+    - metric: "avg_time_per_url_seconds"
+      threshold: "60"
+      notification_channel: "data_acquisition_perf_alerts"
+    - metric: "proxy_failure_rate"
+      threshold: "30%"
+      notification_channel: "proxy_admin_alerts"
+
+# 7. Security & Permissions
+security:
+  required_roles_for_triggering_scrape:
+    - "SystemAutomatedProcessRole"
+    - "DataAnalystRole"
+    - "ResearchTeamMemberRole"
+  # Ethical considerations: Ensure scraping is compliant with legal and ethical guidelines.
+  # This assistant should not be used for malicious purposes or to violate terms of service where explicitly forbidden and not overridden by policy.
+  data_encryption_at_rest: true # For stored scraped data and logs
+  data_encryption_in_transit: true # TLS for fetching web pages and API calls
+  handling_of_sensitive_scraped_data_policy_ref: "Company_Sensitive_Data_Handling_Policy_v1.1.pdf"
+
+# 8. Human-in-the-Loop (HITL) Configuration
+hitl_config:
+  enabled: true # For when selectors fail consistently or websites implement strong anti-scraping measures
+  trigger_on_persistent_selector_failure_rate: "50%_selectors_on_3_consecutive_urls"
+  trigger_on_captcha_detected: true
+  trigger_on_ip_block_suspected: true
+  escalation_queue: "Scraping_Specialist_Review_Queue"
+  information_to_pass_to_human: ["scrape_job_id", "failed_url", "failed_selectors", "screenshot_of_page_if_possible", "error_messages", "current_proxy_if_used"]
+  max_wait_time_for_human_intervention_seconds: 7200 # 2 hours for scraping assistance
+
